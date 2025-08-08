@@ -1,4 +1,4 @@
-# AutoSentry VAPT Tool Dependencies (Fixed Version)
+# AutoSentry VAPT Tool Dependencies (Working Versions)
 
 # Core Web Framework
 Flask==2.3.3
@@ -7,23 +7,14 @@ Flask-CORS==4.0.0
 # HTTP Requests
 requests==2.31.0
 
-# Environment Configuration  
+# Environment Configuration (optional but recommended)
 python-dotenv==1.0.0
 
-# URL Validation
+# URL Validation (optional)
 validators==0.22.0
 
-# System Utilities
+# System Utilities (optional)
 psutil==5.9.5
-
-# XML Processing (for advanced features)
-lxml==4.9.3
-
-# Date/Time Utilities
-python-dateutil==2.8.2
-
-# Optional: Advanced scanning (install manually if needed)
-# python-nmap==0.7.1
 
 # Development Dependencies (optional)
 # pytest==7.4.2

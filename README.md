@@ -1,18 +1,16 @@
-# 🛡️ AutoSentry - VAPT Tool
+# 🛡️ AutoSentry - Professional VAPT Tool
 
-**AutoSentry** is a comprehensive Vulnerability Assessment and Penetration Testing (VAPT) tool that integrates multiple security scanners including Nmap, Nikto, and custom web vulnerability checks for local scanning capabilities.
+**AutoSentry** is a comprehensive Vulnerability Assessment and Penetration Testing (VAPT) tool that integrates multiple security scanners including **Nmap**, **Nikto**, and custom web vulnerability checks for unlimited local scanning.
 
-## 🌟 Features
+## 🌟 Key Features
 
-- **🔍 Multi-Scanner Integration**: Combines Nmap, Nikto, and custom web scanners
-- **🌐 Professional Web Dashboard**: Easy-to-use web interface
-- **⚡ Real-time Scanning**: Live vulnerability detection and reporting  
-- **📊 Detailed Reports**: Comprehensive vulnerability assessment reports
-- **🔌 API Interface**: RESTful API for automation and integration
-- **💻 Command Line Interface**: CLI tool for scripting and automation
-- **📈 Risk Assessment**: Categorizes vulnerabilities by risk level
-- **🏠 Local Scanning**: No external API dependencies - unlimited scans
-- **📋 Export Capabilities**: Results in JSON and CSV formats
+- **🔍 Multi-Scanner Integration**: Nmap, Nikto, and custom web scanners
+- **🌐 Professional Web Dashboard**: Real-time vulnerability scanning interface
+- **💻 Command Line Interface**: Full CLI client for automation
+- **🎯 Python Function Interface**: Easy integration with other projects
+- **📊 Multiple Output Formats**: JSON, CSV, and detailed reports
+- **🏠 Local-First Architecture**: No external API dependencies = unlimited scans
+- **⚡ Real-time Results**: Live vulnerability detection and reporting
 
 ## 🚀 Quick Start
 
@@ -20,259 +18,181 @@
 
 ```bash
 # Install Python packages
-pip install -r config/requirements.txt
+pip install Flask Flask-CORS requests python-dotenv
 
 # Install system tools (Ubuntu/Debian)
-sudo apt update
-sudo apt install nmap nikto
+sudo apt update && sudo apt install nmap nikto
 
 # For other systems:
 # CentOS/RHEL: sudo yum install nmap nikto
 # macOS: brew install nmap nikto
 ```
 
-### 2. Configure AutoSentry
-
-```bash
-# Copy configuration template
-cp config/.env.example config/.env
-
-# Edit configuration (optional - defaults work fine)
-nano config/.env
-```
-
-### 3. Run Setup Check
+### 2. Run Setup Check
 
 ```bash
 python main.py setup
 ```
 
-### 4. Start the Server
+### 3. Start AutoSentry
 
 ```bash
+# Start web server
 python main.py server
+
+# Alternative if main.py has issues
+python run_server.py
 ```
 
-### 5. Access Web Interface
+### 4. Access Web Interface
 
-Open your browser to: **http://localhost:5000**
+Open: **http://localhost:5000**
 
-## 🖥️ Usage
+## 💻 Usage Examples
 
 ### Web Interface
-
-1. Open http://localhost:5000
-2. Enter target URL (e.g., `https://example.com`)  
-3. Select scan type:
-   - **Basic**: Web security headers and basic checks
-   - **Nmap**: Network and port scanning
-   - **Nikto**: Web server vulnerability scanning
-   - **Full**: All scanners combined
+1. Go to http://localhost:5000
+2. Enter target URL (e.g., `https://example.com`)
+3. Select scan type (Basic/Nmap/Nikto/Full)
 4. Click "Start Scan" and view results
 
-### Command Line Interface
-
+### Command Line
 ```bash
-# Check server health
+# Health check
 python main.py client health
+
+# Basic web scan
+python main.py client scan https://example.com --type basic
+
+# Full assessment with detailed results
+python main.py client scan https://example.com --type full --detailed
 
 # Check scanner status
 python main.py client status
-
-# Start a basic web scan
-python main.py client scan https://example.com --type basic
-
-# Start a full assessment
-python main.py client scan https://example.com --type full --detailed
-
-# Get help
-python main.py client --help
 ```
 
-### API Usage
+### Python Function (Main Feature)
+```python
+from scanner_function import scan_url
 
-```bash
-# Start scan via API
-curl -X POST http://localhost:5000/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "scan_type": "basic"}'
+# Basic scan
+results = scan_url('https://example.com')
+print(f"Found {results['summary']['total_vulnerabilities']} vulnerabilities")
 
-# Check server health
-curl http://localhost:5000/health
+# Full scan with CSV export
+csv_results = scan_url('https://example.com', 'full', 'csv')
+with open('results.csv', 'w') as f:
+    f.write(csv_results)
 
-# Check scanner status  
-curl http://localhost:5000/api/scanner-status
+# Get vulnerability list
+vulns = scan_url('https://example.com', 'basic', 'list')
+for vuln in vulns:
+    print(f"{vuln['name']} - {vuln['risk_level']}")
 ```
 
-## 🔧 Configuration
+## 🔍 Scan Types
 
-### Environment Variables
-
-Key settings in `config/.env`:
-
-```bash
-# Server settings
-AUTOSENTRY_HOST=0.0.0.0
-AUTOSENTRY_PORT=5000
-AUTOSENTRY_DEBUG=True
-
-# Scanner settings  
-ENABLE_NMAP=True
-ENABLE_NIKTO=True
-MAX_SCAN_TIME=1800
-
-# Directories
-RESULTS_DIR=./results
-LOGS_DIR=./logs
-TEMP_DIR=./temp
-```
-
-### Scanner Configuration
-
-- **Nmap**: Network and port scanning
-- **Nikto**: Web server vulnerability assessment
-- **Basic Web Scanner**: HTTP security headers, cookies, server info
-
-## 📊 Scan Types
-
-- **Basic**: Fast web security check (security headers, server info)
-- **Nmap**: Network scan (open ports, services, OS detection)
+- **Basic**: Fast web security check (security headers, server info, cookies)
+- **Nmap**: Network scan (open ports, services, OS detection)  
 - **Nikto**: Web vulnerability scan (6700+ vulnerability checks)
 - **Full**: Combined scan using all available scanners
 
-## 🛡️ Security Considerations
-
-⚠️ **IMPORTANT**: Only scan systems you own or have explicit permission to test.
-
-- Use for authorized security assessments only
-- Follow responsible disclosure practices
-- Comply with local laws and regulations
-- Consider using in isolated test environments
-
-## 📁 Project Structure
-
-```
-autosentry/
-├── main.py              # Main entry point
-├── server/
-│   ├── app.py           # Flask web application
-│   ├── vapt_scanner.py  # Main scanner orchestrator
-│   ├── config.py        # Configuration management
-│   └── utils.py         # Utility functions
-├── client/
-│   └── client.py        # Command-line client
-├── config/
-│   ├── .env.example     # Configuration template
-│   ├── .env             # Your configuration
-│   └── requirements.txt # Python dependencies
-├── docs/
-│   └── README.md        # This file
-├── results/             # Scan results storage
-├── logs/                # Application logs
-└── temp/                # Temporary files
-```
-
-## 🔍 Vulnerability Detection
-
-AutoSentry can detect:
+## 🛡️ Vulnerability Detection
 
 ### Web Application Security
 - Missing security headers (HSTS, CSP, X-Frame-Options, etc.)
 - Server information disclosure
 - Insecure cookie configurations
-- Common web server misconfigurations
+- Dangerous HTTP methods
 
-### Network Security  
+### Network Security
 - Open ports and services
-- Service version information
-- Potentially insecure services (FTP, Telnet)
+- Service version detection
+- Potentially insecure services (FTP, Telnet, RDP)
 - Network service enumeration
 
 ### Web Server Vulnerabilities
-- 6700+ known vulnerability checks (via Nikto)
+- 6700+ known vulnerability checks (Nikto)
 - Dangerous files and directories
 - Server-specific vulnerabilities
-- Web application framework issues
+- Configuration issues
 
-## 📈 Risk Assessment
-
-Vulnerabilities are categorized by risk level:
+## 📊 Risk Assessment
 
 - **🔴 High Risk**: Critical vulnerabilities requiring immediate attention
-- **🟡 Medium Risk**: Important security issues to address
+- **🟡 Medium Risk**: Important security issues to address  
 - **🟢 Low Risk**: Minor security improvements
 - **ℹ️ Info**: Informational findings for awareness
 
-## 🤝 Contributing
+## 🔧 Troubleshooting
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)  
-5. Open a Pull Request
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. "Module not found" errors**
+### "Module not found" errors
 ```bash
-pip install -r config/requirements.txt
+pip install Flask Flask-CORS requests python-dotenv
 ```
 
-**2. "Scanner not found" errors**
+### "Scanner not found" errors  
 ```bash
-# Install missing scanners
-sudo apt install nmap nikto  # Ubuntu/Debian
-brew install nmap nikto      # macOS
+# Ubuntu/Debian
+sudo apt install nmap nikto
+
+# macOS
+brew install nmap nikto
 ```
 
-**3. Permission denied errors**
+### Main server issues
 ```bash
-# Don't run as root unless necessary
-# Ensure proper file permissions
-chmod +x main.py
+# Use backup server
+python run_server.py
 ```
 
-**4. Port already in use**
+### Port already in use
+Edit `config/.env`:
 ```bash
-# Change port in config/.env
 AUTOSENTRY_PORT=5001
 ```
 
-### Getting Help
+## 📁 Project Structure
 
-1. Check the setup: `python main.py setup`
-2. Review logs in `logs/autosentry.log`  
-3. Test individual components:
-   - Server: `python main.py server`
-   - Client: `python main.py client health`
-4. Check scanner status: `python main.py client status`
+```
+autosentry_final/
+├── main.py              # 🚀 Main entry point
+├── run_server.py        # 🔄 Backup server runner
+├── scanner_function.py  # 🎯 Main scanner function
+├── README.md           # 📖 This file
+├── server/
+│   ├── app.py          # 🌐 Web application
+│   ├── vapt_scanner.py # 🔍 Scanner orchestrator
+│   ├── config.py       # ⚙️ Configuration
+│   └── utils.py        # 🛠️ Utilities
+├── client/
+│   └── client.py       # 💻 CLI interface
+└── config/
+    ├── .env            # 🔧 Configuration
+    └── requirements.txt # 📦 Dependencies
+```
 
-## 📜 License
+## 🎯 Perfect for Internship Demos
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Unique Features to Highlight:**
+- ✅ Local-first architecture (no API costs)
+- ✅ Professional enterprise-quality interface
+- ✅ Multi-scanner integration in single platform
+- ✅ Real-time vulnerability detection
+- ✅ Multiple output formats (JSON, CSV, Web)
+- ✅ Command-line + Web interfaces
+- ✅ Python function for easy integration
 
-## 🙏 Acknowledgments
+## 🎪 Demo Script
 
-- **OWASP** for security standards and best practices
-- **Nmap Project** for the excellent network scanner
-- **Nikto** team for the comprehensive web vulnerability scanner
-- **Flask** team for the fantastic web framework
+*"I built AutoSentry, a comprehensive VAPT tool that integrates multiple security scanners into a unified platform. It runs entirely locally, features professional web dashboard, and can detect various security vulnerabilities including missing headers, open ports, and web server issues. The tool supports multiple interfaces - web, command-line, and Python function integration."*
 
-## 🔄 Roadmap
+## 📄 License
 
-- [ ] OWASP ZAP integration
-- [ ] Database storage for scan history
-- [ ] User authentication and multi-user support
-- [ ] Scheduled scanning capabilities
-- [ ] Custom vulnerability rules
-- [ ] Integration with CI/CD pipelines
-- [ ] Docker containerization
-- [ ] PDF report generation
+MIT License - Feel free to use for educational and professional purposes.
 
 ---
 
-**🛡️ Stay Secure! Happy Scanning!**
+**🛡️ AutoSentry - Professional Vulnerability Assessment Made Simple**
 
-For more information, visit: [AutoSentry Documentation](docs/)
+For issues or questions, check the troubleshooting section above or run `python main.py setup` to diagnose problems.

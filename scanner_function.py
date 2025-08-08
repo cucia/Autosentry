@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AutoSentry Scanner Function (Fixed Version)
+AutoSentry Scanner Function (Fixed Version - Working Nmap/Nikto)
 Main scanning function that can be easily integrated into other projects
 
 This is the core scanning function you requested that takes a URL 
@@ -17,15 +17,15 @@ from datetime import datetime
 # Add server modules to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.join(current_dir, 'server')
+sys.path.insert(0, current_dir)
 sys.path.insert(0, server_dir)
 
 try:
-    from vapt_scanner import VAPTScanner
-    from utils import validate_url, sanitize_url
-except ImportError:
-    # Fallback imports
     from server.vapt_scanner import VAPTScanner
     from server.utils import validate_url, sanitize_url
+except ImportError:
+    print("Warning: Could not import server modules. Make sure you're in the autosentry_final directory.")
+    VAPTScanner = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -40,10 +40,10 @@ def scan_url(url: str,
     Args:
         url (str): Target URL to scan (e.g., 'https://example.com')
         scan_type (str): Type of scan to perform:
-            - 'basic': Basic web security checks (default)
-            - 'nmap': Network/port scanning  
-            - 'nikto': Web vulnerability scanning
-            - 'full': All scanners combined
+            - 'basic': Basic web security checks (default) - Always works
+            - 'nmap': Network/port scanning (requires nmap installed)
+            - 'nikto': Web vulnerability scanning (requires nikto installed) 
+            - 'full': All available scanners combined
         return_format (str): Format for results:
             - 'json': Return as dictionary (default)
             - 'csv': Return as CSV string
@@ -66,9 +66,17 @@ def scan_url(url: str,
         >>> vulns = scan_url('https://example.com', 'basic', 'list')
         >>> for vuln in vulns:
         ...     print(f"{vuln['name']} - {vuln['risk_level']}")
+
+        >>> # Network scan (requires nmap)
+        >>> nmap_results = scan_url('https://example.com', 'nmap', 'json')
+        >>> print(f"Open ports found: {len(nmap_results.get('scanner_results', {}).get('nmap', {}).get('vulnerabilities', []))}")
     """
 
     try:
+        # Check if scanner is available
+        if VAPTScanner is None:
+            raise ImportError("VAPTScanner not available. Make sure you're in the correct directory.")
+
         # Validate and sanitize URL
         if not url or not isinstance(url, str):
             raise ValueError("URL must be a non-empty string")
@@ -276,6 +284,9 @@ def get_scanner_health() -> Dict[str, Dict]:
         ...     print(f"{scanner}: {status['status']}")
     """
     try:
+        if VAPTScanner is None:
+            raise ImportError("VAPTScanner not available")
+
         scanner = VAPTScanner()
         return scanner.health_check()
     except Exception as e:

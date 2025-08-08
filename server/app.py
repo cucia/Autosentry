@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
 AutoSentry - Vulnerability Assessment and Penetration Testing Tool
-Main Server Application (Fixed Version)
-
-This is a comprehensive VAPT tool that integrates multiple vulnerability scanners
-including OWASP ZAP, Nmap, and Nikto for local scanning capabilities.
+Main Server Application (Fixed Version with Working Nmap/Nikto)
 """
 
 from flask import Flask, request, jsonify, render_template_string
@@ -15,8 +12,9 @@ import sys
 from datetime import datetime
 import threading
 import traceback
+import json
 
-# Add current directory to path for imports
+# Add paths for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
@@ -26,24 +24,27 @@ try:
     from vapt_scanner import VAPTScanner
     from utils import setup_logging, validate_url
     from config import Config
-except ImportError as e:
-    print(f"Import error: {e}")
-    print("Creating minimal implementations...")
+except ImportError:
+    print("Warning: Some modules could not be imported, using fallbacks...")
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Setup basic logging
-logging.basicConfig(level=logging.INFO)
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize scanner (with error handling)
 try:
     vapt_scanner = VAPTScanner()
-except:
+    logger.info("VAPT Scanner initialized successfully")
+except Exception as e:
     vapt_scanner = None
-    logger.warning("VAPT Scanner not available, using basic functionality")
+    logger.error(f"VAPT Scanner initialization failed: {e}")
 
 # Store scan results in memory
 scan_results = {}
@@ -51,7 +52,7 @@ active_scans = {}
 
 @app.route('/')
 def index():
-    """Main dashboard"""
+    """Main dashboard with improved UI"""
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -82,6 +83,23 @@ def index():
                 font-size: 2.5em;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
             }
+            .scanner-status {
+                background: #f8f9fa;
+                padding: 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                border: 1px solid #e9ecef;
+            }
+            .status-item {
+                display: inline-block;
+                margin: 5px 10px;
+                padding: 5px 10px;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .status-available { background: #d4edda; color: #155724; }
+            .status-unavailable { background: #f8d7da; color: #721c24; }
             .scan-form { 
                 background: #f8f9fa; 
                 padding: 25px; 
@@ -124,6 +142,11 @@ def index():
                 transform: translateY(-2px);
                 box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             }
+            .btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+            }
             .results { 
                 margin-top: 20px; 
                 padding: 20px; 
@@ -137,26 +160,10 @@ def index():
                 border-radius: 8px;
                 font-weight: 500;
             }
-            .success { 
-                background: #d4edda; 
-                border: 1px solid #c3e6cb; 
-                color: #155724; 
-            }
-            .error { 
-                background: #f8d7da; 
-                border: 1px solid #f5c6cb; 
-                color: #721c24; 
-            }
-            .info { 
-                background: #d1ecf1; 
-                border: 1px solid #bee5eb; 
-                color: #0c5460; 
-            }
-            .loading { 
-                background: #fff3cd; 
-                border: 1px solid #ffeaa7; 
-                color: #856404; 
-            }
+            .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+            .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+            .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+            .loading { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
             pre { 
                 background: #2c3e50; 
                 color: #ecf0f1; 
@@ -165,6 +172,7 @@ def index():
                 overflow-x: auto;
                 font-size: 14px;
                 line-height: 1.5;
+                max-height: 400px;
             }
             .stats { 
                 display: grid; 
@@ -179,11 +187,11 @@ def index():
                 text-align: center;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             }
-            .stat-number { 
-                font-size: 2em; 
-                font-weight: bold; 
-                color: #667eea; 
-            }
+            .stat-number { font-size: 2em; font-weight: bold; }
+            .high-risk { color: #dc3545; }
+            .medium-risk { color: #fd7e14; }
+            .low-risk { color: #ffc107; }
+            .info-risk { color: #17a2b8; }
             .footer { 
                 text-align: center; 
                 margin-top: 30px; 
@@ -191,11 +199,30 @@ def index():
                 border-top: 1px solid #e9ecef;
                 color: #6c757d;
             }
+            .progress-bar {
+                width: 100%;
+                height: 20px;
+                background: #e9ecef;
+                border-radius: 10px;
+                overflow: hidden;
+                margin: 10px 0;
+            }
+            .progress-fill {
+                height: 100%;
+                background: linear-gradient(45deg, #667eea, #764ba2);
+                width: 0%;
+                transition: width 0.5s ease;
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>🛡️ AutoSentry - VAPT Tool</h1>
+
+            <div class="scanner-status">
+                <h3>🔍 Scanner Status</h3>
+                <div id="scannerStatus">Loading scanner status...</div>
+            </div>
 
             <div class="scan-form">
                 <h3>🔍 Start Vulnerability Assessment</h3>
@@ -203,17 +230,21 @@ def index():
                     <div class="form-group">
                         <label for="targetUrl">Target URL:</label>
                         <input type="url" id="targetUrl" placeholder="https://example.com" required>
+                        <small>Enter the complete URL including http:// or https://</small>
                     </div>
                     <div class="form-group">
                         <label for="scanType">Scan Type:</label>
                         <select id="scanType">
-                            <option value="basic">Basic Web Security Check</option>
+                            <option value="basic">Basic Web Security Check (Fast)</option>
                             <option value="nmap">Network Scan (Nmap)</option>
                             <option value="nikto">Web Vulnerability Scan (Nikto)</option>
                             <option value="full">Full Assessment (All Scanners)</option>
                         </select>
                     </div>
-                    <button type="submit" class="btn">🚀 Start Scan</button>
+                    <button type="submit" class="btn" id="scanButton">🚀 Start Scan</button>
+                    <div class="progress-bar" id="progressBar" style="display: none;">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
                 </form>
             </div>
 
@@ -225,30 +256,80 @@ def index():
             <div class="footer">
                 <p>🔒 AutoSentry VAPT Tool - Professional Vulnerability Assessment Platform</p>
                 <p>API Health: <a href="/health">Check Status</a> | Scanner Status: <a href="/api/scanner-status">View Details</a></p>
+                <p>Client Usage: <code>python main.py client scan https://example.com</code></p>
             </div>
         </div>
 
         <script>
-            document.getElementById('scanForm').addEventListener('submit', function(e) {
+            // Load scanner status on page load
+            async function loadScannerStatus() {
+                try {
+                    const response = await fetch('/api/scanner-status');
+                    const data = await response.json();
+                    const statusDiv = document.getElementById('scannerStatus');
+
+                    let statusHtml = '';
+                    for (const [scanner, info] of Object.entries(data.scanners || {})) {
+                        const statusClass = info.available ? 'status-available' : 'status-unavailable';
+                        const statusText = info.available ? 'Available' : 'Unavailable';
+                        statusHtml += `<span class="status-item ${statusClass}">${scanner.toUpperCase()}: ${statusText}</span>`;
+                    }
+
+                    statusDiv.innerHTML = statusHtml;
+                } catch (error) {
+                    document.getElementById('scannerStatus').innerHTML = '<span class="status-item status-unavailable">Error loading scanner status</span>';
+                }
+            }
+
+            // Simulate progress bar
+            function simulateProgress() {
+                const progressBar = document.getElementById('progressBar');
+                const progressFill = document.getElementById('progressFill');
+
+                progressBar.style.display = 'block';
+                let progress = 0;
+
+                const interval = setInterval(() => {
+                    progress += Math.random() * 10;
+                    if (progress > 90) progress = 90;
+                    progressFill.style.width = progress + '%';
+                }, 500);
+
+                return interval;
+            }
+
+            // Handle form submission
+            document.getElementById('scanForm').addEventListener('submit', async function(e) {
                 e.preventDefault();
 
                 const url = document.getElementById('targetUrl').value;
                 const scanType = document.getElementById('scanType').value;
-
-                // Show loading
+                const button = document.getElementById('scanButton');
                 const results = document.getElementById('results');
                 const content = document.getElementById('resultContent');
-                results.style.display = 'block';
-                content.innerHTML = '<div class="status loading">🔄 Initiating ' + scanType + ' scan for ' + url + '...<br>This may take a few moments.</div>';
 
-                // Start scan
-                fetch('/api/scan', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url: url, scan_type: scanType})
-                })
-                .then(response => response.json())
-                .then(data => {
+                // Disable button and show loading
+                button.disabled = true;
+                button.textContent = '🔄 Scanning...';
+
+                results.style.display = 'block';
+                content.innerHTML = '<div class="status loading">🔄 Initiating ' + scanType + ' scan for ' + url + '...<br>This may take a few moments depending on the scan type.</div>';
+
+                const progressInterval = simulateProgress();
+
+                try {
+                    const response = await fetch('/api/scan', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({url: url, scan_type: scanType})
+                    });
+
+                    const data = await response.json();
+
+                    // Clear progress bar
+                    clearInterval(progressInterval);
+                    document.getElementById('progressBar').style.display = 'none';
+
                     if (data.success) {
                         content.innerHTML = '<div class="status success">✅ Scan completed successfully!</div>';
 
@@ -261,19 +342,37 @@ def index():
                                 const summary = data.results.summary;
                                 resultHtml += '<div class="stats">';
                                 resultHtml += '<div class="stat-card"><div class="stat-number">' + summary.total_vulnerabilities + '</div>Total Findings</div>';
-                                resultHtml += '<div class="stat-card"><div class="stat-number">' + (summary.high_risk || 0) + '</div>High Risk</div>';
-                                resultHtml += '<div class="stat-card"><div class="stat-number">' + (summary.medium_risk || 0) + '</div>Medium Risk</div>';
-                                resultHtml += '<div class="stat-card"><div class="stat-number">' + (summary.low_risk || 0) + '</div>Low Risk</div>';
+                                resultHtml += '<div class="stat-card"><div class="stat-number high-risk">' + (summary.high_risk || 0) + '</div>High Risk</div>';
+                                resultHtml += '<div class="stat-card"><div class="stat-number medium-risk">' + (summary.medium_risk || 0) + '</div>Medium Risk</div>';
+                                resultHtml += '<div class="stat-card"><div class="stat-number low-risk">' + (summary.low_risk || 0) + '</div>Low Risk</div>';
+                                resultHtml += '<div class="stat-card"><div class="stat-number info-risk">' + (summary.info || 0) + '</div>Info</div>';
                                 resultHtml += '</div>';
                             }
 
-                            // Add detailed results
-                            for (const [scanner, result] of Object.entries(data.results.scanner_results || {})) {
+                            // Add scanner-specific results
+                            const scannerResults = data.results.scanner_results || {};
+                            for (const [scanner, result] of Object.entries(scannerResults)) {
                                 resultHtml += '<h5>📋 ' + scanner.toUpperCase() + ' Results:</h5>';
+
                                 if (result.error) {
-                                    resultHtml += '<div class="status error">Error: ' + result.error + '</div>';
+                                    resultHtml += '<div class="status error">❌ ' + result.error + '</div>';
                                 } else {
-                                    resultHtml += '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                                    const vulns = result.vulnerabilities || [];
+                                    resultHtml += '<div class="status info">Found ' + vulns.length + ' findings</div>';
+
+                                    if (vulns.length > 0) {
+                                        resultHtml += '<div style="max-height: 300px; overflow-y: auto;">';
+                                        vulns.forEach((vuln, index) => {
+                                            const riskClass = vuln.risk_level === 'high' ? 'high-risk' : 
+                                                            vuln.risk_level === 'medium' ? 'medium-risk' : 
+                                                            vuln.risk_level === 'low' ? 'low-risk' : 'info-risk';
+                                            resultHtml += '<div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">';
+                                            resultHtml += '<strong class="' + riskClass + '">' + (vuln.name || 'Finding') + '</strong><br>';
+                                            resultHtml += '<small>' + (vuln.description || 'No description') + '</small>';
+                                            resultHtml += '</div>';
+                                        });
+                                        resultHtml += '</div>';
+                                    }
                                 }
                             }
 
@@ -282,11 +381,19 @@ def index():
                     } else {
                         content.innerHTML = '<div class="status error">❌ Scan failed: ' + (data.error || 'Unknown error') + '</div>';
                     }
-                })
-                .catch(error => {
+                } catch (error) {
+                    clearInterval(progressInterval);
+                    document.getElementById('progressBar').style.display = 'none';
                     content.innerHTML = '<div class="status error">❌ Network error: ' + error.message + '</div>';
-                });
+                } finally {
+                    // Re-enable button
+                    button.disabled = false;
+                    button.textContent = '🚀 Start Scan';
+                }
             });
+
+            // Load scanner status when page loads
+            loadScannerStatus();
         </script>
     </body>
     </html>
@@ -298,24 +405,30 @@ def start_scan():
     """Start a vulnerability scan"""
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON data provided'})
+
         target_url = data.get('url')
         scan_type = data.get('scan_type', 'basic')
 
-        # Basic URL validation
-        if not target_url or not target_url.startswith(('http://', 'https://')):
-            return jsonify({'success': False, 'error': 'Invalid URL format'})
+        # Validate input
+        if not target_url:
+            return jsonify({'success': False, 'error': 'URL is required'})
+
+        if not target_url.startswith(('http://', 'https://')):
+            return jsonify({'success': False, 'error': 'URL must include http:// or https://'})
 
         logger.info(f"Starting {scan_type} scan for {target_url}")
 
-        # Use VAPT scanner if available, otherwise use basic scanning
+        # Use VAPT scanner if available
         if vapt_scanner:
             try:
                 results = vapt_scanner.scan(target_url, scan_type)
             except Exception as e:
                 logger.error(f"VAPT scanner error: {e}")
-                results = perform_basic_scan(target_url, scan_type)
+                return jsonify({'success': False, 'error': f'Scanner error: {str(e)}'})
         else:
-            results = perform_basic_scan(target_url, scan_type)
+            return jsonify({'success': False, 'error': 'VAPT scanner not available'})
 
         # Store results with timestamp
         scan_id = f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -326,6 +439,8 @@ def start_scan():
             'results': results
         }
 
+        logger.info(f"Scan completed: {scan_id}")
+
         return jsonify({
             'success': True,
             'scan_id': scan_id,
@@ -333,194 +448,9 @@ def start_scan():
         })
 
     except Exception as e:
-        logger.error(f"Scan error: {str(e)}")
+        logger.error(f"Scan API error: {str(e)}")
         logger.error(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)})
-
-def perform_basic_scan(target_url, scan_type):
-    """Perform basic vulnerability scan when full scanner is not available"""
-    try:
-        import requests
-        import subprocess
-        from urllib.parse import urlparse
-
-        results = {
-            'target_url': target_url,
-            'scan_type': scan_type,
-            'timestamp': datetime.now().isoformat(),
-            'scanner_results': {},
-            'summary': {
-                'total_vulnerabilities': 0,
-                'high_risk': 0,
-                'medium_risk': 0,
-                'low_risk': 0,
-                'info': 0
-            }
-        }
-
-        vulnerabilities = []
-
-        if scan_type in ['basic', 'full']:
-            # Basic web security check
-            try:
-                response = requests.get(target_url, timeout=10, verify=False)
-
-                # Check security headers
-                security_headers = {
-                    'X-Frame-Options': 'Missing X-Frame-Options header (Clickjacking protection)',
-                    'X-Content-Type-Options': 'Missing X-Content-Type-Options header',
-                    'X-XSS-Protection': 'Missing X-XSS-Protection header',
-                    'Strict-Transport-Security': 'Missing HSTS header',
-                    'Content-Security-Policy': 'Missing CSP header'
-                }
-
-                for header, description in security_headers.items():
-                    if header not in response.headers:
-                        vulnerabilities.append({
-                            'name': f'Missing Security Header: {header}',
-                            'description': description,
-                            'risk_level': 'medium' if header in ['X-Frame-Options', 'Content-Security-Policy'] else 'low',
-                            'url': target_url,
-                            'evidence': f'Header {header} not found in response',
-                            'solution': f'Add {header} header to web server configuration',
-                            'scanner': 'Basic Web Scanner'
-                        })
-
-                # Check server information disclosure
-                if 'Server' in response.headers:
-                    vulnerabilities.append({
-                        'name': 'Server Information Disclosure',
-                        'description': f'Server banner reveals: {response.headers["Server"]}',
-                        'risk_level': 'info',
-                        'url': target_url,
-                        'evidence': f'Server: {response.headers["Server"]}',
-                        'solution': 'Configure web server to hide version information',
-                        'scanner': 'Basic Web Scanner'
-                    })
-
-                results['scanner_results']['basic'] = {
-                    'vulnerabilities': vulnerabilities,
-                    'scan_info': {
-                        'status_code': response.status_code,
-                        'response_headers': dict(response.headers),
-                        'scanner': 'Basic Web Scanner'
-                    }
-                }
-
-            except Exception as e:
-                results['scanner_results']['basic'] = {
-                    'error': f'Basic scan failed: {str(e)}',
-                    'vulnerabilities': []
-                }
-
-        if scan_type in ['nmap', 'full']:
-            # Try Nmap scan
-            try:
-                parsed_url = urlparse(target_url)
-                host = parsed_url.hostname
-
-                # Simple nmap scan
-                cmd = ['nmap', '-T4', '-F', host]  # Fast scan of most common ports
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-                if result.returncode == 0:
-                    # Parse nmap output for open ports
-                    nmap_vulns = []
-                    lines = result.stdout.split('\n')
-                    for line in lines:
-                        if '/tcp' in line and 'open' in line:
-                            port_info = line.strip()
-                            nmap_vulns.append({
-                                'name': 'Open Port Detected',
-                                'description': f'Open port found: {port_info}',
-                                'risk_level': 'info',
-                                'url': f'tcp://{host}',
-                                'evidence': port_info,
-                                'solution': 'Review if this port needs to be publicly accessible',
-                                'scanner': 'Nmap'
-                            })
-
-                    vulnerabilities.extend(nmap_vulns)
-                    results['scanner_results']['nmap'] = {
-                        'vulnerabilities': nmap_vulns,
-                        'scan_info': {'output': result.stdout, 'scanner': 'Nmap'}
-                    }
-                else:
-                    results['scanner_results']['nmap'] = {
-                        'error': 'Nmap scan failed or host unreachable',
-                        'vulnerabilities': []
-                    }
-
-            except Exception as e:
-                results['scanner_results']['nmap'] = {
-                    'error': f'Nmap not available or failed: {str(e)}',
-                    'vulnerabilities': []
-                }
-
-        if scan_type in ['nikto', 'full']:
-            # Try Nikto scan
-            try:
-                cmd = ['nikto', '-h', target_url, '-Format', 'txt']
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-                if result.returncode in [0, 2]:  # Nikto returns 2 on findings
-                    # Parse nikto output
-                    nikto_vulns = []
-                    lines = result.stdout.split('\n')
-                    for line in lines:
-                        if line.startswith('+ ') and ':' in line:
-                            finding = line[2:].strip()  # Remove '+ ' prefix
-                            nikto_vulns.append({
-                                'name': 'Web Server Finding',
-                                'description': finding,
-                                'risk_level': 'low',
-                                'url': target_url,
-                                'evidence': finding,
-                                'solution': 'Review and remediate the identified issue',
-                                'scanner': 'Nikto'
-                            })
-
-                    vulnerabilities.extend(nikto_vulns)
-                    results['scanner_results']['nikto'] = {
-                        'vulnerabilities': nikto_vulns,
-                        'scan_info': {'findings_count': len(nikto_vulns), 'scanner': 'Nikto'}
-                    }
-                else:
-                    results['scanner_results']['nikto'] = {
-                        'error': 'Nikto scan failed',
-                        'vulnerabilities': []
-                    }
-
-            except Exception as e:
-                results['scanner_results']['nikto'] = {
-                    'error': f'Nikto not available or failed: {str(e)}',
-                    'vulnerabilities': []
-                }
-
-        # Calculate summary
-        risk_counts = {'high': 0, 'medium': 0, 'low': 0, 'info': 0}
-        for vuln in vulnerabilities:
-            risk_level = vuln.get('risk_level', 'info')
-            if risk_level in risk_counts:
-                risk_counts[risk_level] += 1
-
-        results['summary'] = {
-            'total_vulnerabilities': len(vulnerabilities),
-            'high_risk': risk_counts['high'],
-            'medium_risk': risk_counts['medium'],
-            'low_risk': risk_counts['low'],
-            'info': risk_counts['info']
-        }
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Basic scan error: {e}")
-        return {
-            'error': str(e),
-            'scanner_results': {},
-            'summary': {'total_vulnerabilities': 0}
-        }
+        return jsonify({'success': False, 'error': f'Internal error: {str(e)}'})
 
 @app.route('/api/results/<scan_id>')
 def get_results(scan_id):
@@ -532,53 +462,77 @@ def get_results(scan_id):
 @app.route('/api/scanner-status')
 def scanner_status():
     """Get status of all scanners"""
-    status = {}
-
-    # Check Nmap
     try:
-        import subprocess
-        result = subprocess.run(['nmap', '--version'], capture_output=True, timeout=5)
-        status['nmap'] = {
-            'available': result.returncode == 0,
-            'version': result.stdout.decode().split('\n')[0] if result.returncode == 0 else 'Not found'
-        }
-    except:
-        status['nmap'] = {'available': False, 'error': 'Not installed'}
-
-    # Check Nikto
-    try:
-        result = subprocess.run(['nikto', '-Version'], capture_output=True, timeout=5)
-        status['nikto'] = {
-            'available': result.returncode == 0,
-            'version': result.stdout.decode().split('\n')[0] if result.returncode == 0 else 'Not found'
-        }
-    except:
-        status['nikto'] = {'available': False, 'error': 'Not installed'}
-
-    # Check Java (for ZAP)
-    try:
-        result = subprocess.run(['java', '-version'], capture_output=True, timeout=5)
-        status['java'] = {
-            'available': result.returncode == 0,
-            'version': result.stderr.decode().split('\n')[0] if result.returncode == 0 else 'Not found'
-        }
-    except:
-        status['java'] = {'available': False, 'error': 'Not installed'}
-
-    return jsonify({
-        'scanners': status,
-        'timestamp': datetime.now().isoformat()
-    })
+        if vapt_scanner:
+            status = vapt_scanner.get_scanner_status()
+            return jsonify({
+                'scanners': status,
+                'timestamp': datetime.now().isoformat(),
+                'server_status': 'healthy'
+            })
+        else:
+            return jsonify({
+                'scanners': {
+                    'basic': {'available': True, 'status': 'ready'},
+                    'nmap': {'available': False, 'error': 'Scanner not initialized'},
+                    'nikto': {'available': False, 'error': 'Scanner not initialized'}
+                },
+                'timestamp': datetime.now().isoformat(),
+                'server_status': 'degraded'
+            })
+    except Exception as e:
+        logger.error(f"Scanner status error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0',
-        'scanner_available': vapt_scanner is not None
-    })
+    try:
+        health_data = {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'version': '1.0.0',
+            'scanner_available': vapt_scanner is not None
+        }
+
+        if vapt_scanner:
+            scanner_health = vapt_scanner.health_check()
+            health_data['scanners'] = scanner_health['scanners']
+            health_data['available_scanners'] = scanner_health.get('available_scanners', [])
+
+        return jsonify(health_data)
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/export/<scan_id>')
+def export_results(scan_id):
+    """Export scan results as CSV"""
+    if scan_id not in scan_results:
+        return jsonify({'error': 'Scan not found'}), 404
+
+    try:
+        scan_data = scan_results[scan_id]
+        if vapt_scanner:
+            csv_content = vapt_scanner.export_to_csv({'results': scan_data['results']})
+        else:
+            # Basic CSV export
+            csv_content = f"Scanner,Finding,URL,Timestamp\n"
+            csv_content += f"Basic,Scan results for {scan_data['url']},{scan_data['url']},{scan_data['timestamp']}\n"
+
+        response = app.response_class(
+            csv_content,
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename={scan_id}.csv'}
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Export error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(500)
 def internal_error(error):
@@ -597,12 +551,12 @@ if __name__ == '__main__':
         config = Config()
         host = config.HOST
         port = config.PORT
-        debug = config.DEBUG
+        debug = False  # Always False for production stability
     except:
         # Fallback configuration
         host = os.getenv('AUTOSENTRY_HOST', '0.0.0.0')
         port = int(os.getenv('AUTOSENTRY_PORT', '5000'))
-        debug = os.getenv('AUTOSENTRY_DEBUG', 'True').lower() == 'true'
+        debug = False
 
     # Start server
     logger.info("Starting AutoSentry VAPT Tool Server...")
@@ -611,5 +565,7 @@ if __name__ == '__main__':
     app.run(
         host=host,
         port=port,
-        debug=debug
+        debug=debug,
+        use_reloader=False,
+        threaded=True
     )

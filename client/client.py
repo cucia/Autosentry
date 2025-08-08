@@ -41,26 +41,28 @@ class AutoSentryClient:
         }
 
         try:
-            print(f"Starting {scan_type} scan for {target_url}...")
+            print(f"🔍 Starting {scan_type} scan for {target_url}...")
+            print("⏳ This may take a few minutes depending on the scan type...")
+
             response = self.session.post(
                 f"{self.server_url}/api/scan",
                 json=data,
-                timeout=300  # 5 minutes timeout for scans
+                timeout=600  # 10 minutes timeout for scans
             )
             response.raise_for_status()
             result = response.json()
 
             if result.get('success'):
-                print("Scan completed successfully!")
-                print(f"Scan ID: {result.get('scan_id')}")
+                print("✅ Scan completed successfully!")
+                print(f"📊 Scan ID: {result.get('scan_id')}")
                 return result
             else:
-                print(f"Scan failed: {result.get('error')}")
+                print(f"❌ Scan failed: {result.get('error')}")
                 return result
 
         except requests.exceptions.RequestException as e:
             error_result = {'success': False, 'error': str(e)}
-            print(f"Request failed: {str(e)}")
+            print(f"❌ Request failed: {str(e)}")
             return error_result
 
     def get_results(self, scan_id: str) -> Optional[Dict[str, Any]]:
@@ -70,7 +72,7 @@ class AutoSentryClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Failed to get results: {str(e)}")
+            print(f"❌ Failed to get results: {str(e)}")
             return None
 
     def get_scanner_status(self) -> Optional[Dict[str, Any]]:
@@ -80,13 +82,13 @@ class AutoSentryClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Failed to get scanner status: {str(e)}")
+            print(f"❌ Failed to get scanner status: {str(e)}")
             return None
 
     def display_summary(self, results: Dict[str, Any]):
         """Display scan results summary"""
         print("\n" + "="*80)
-        print("AUTOSENTRY VULNERABILITY SCAN SUMMARY")
+        print("🛡️  AUTOSENTRY VULNERABILITY SCAN SUMMARY")
         print("="*80)
 
         # Get the results data
@@ -95,31 +97,34 @@ class AutoSentryClient:
         else:
             scan_data = results
 
-        print(f"Target: {scan_data.get('target_url', results.get('url', 'N/A'))}")
-        print(f"Scan Type: {scan_data.get('scan_type', 'N/A')}")
-        print(f"Timestamp: {scan_data.get('timestamp', 'N/A')}")
+        print(f"🎯 Target: {scan_data.get('target_url', results.get('url', 'N/A'))}")
+        print(f"🔍 Scan Type: {scan_data.get('scan_type', 'N/A')}")
+        print(f"⏰ Timestamp: {scan_data.get('timestamp', 'N/A')}")
 
         # Summary statistics
         if 'summary' in scan_data:
             summary = scan_data['summary']
-            print(f"\nVULNERABILITIES FOUND:")
-            print(f"  Total: {summary.get('total_vulnerabilities', 0)}")
-            print(f"  High Risk: {summary.get('high_risk', 0)}")
-            print(f"  Medium Risk: {summary.get('medium_risk', 0)}")
-            print(f"  Low Risk: {summary.get('low_risk', 0)}")
-            print(f"  Info: {summary.get('info', 0)}")
+            print(f"\n📊 VULNERABILITIES FOUND:")
+            print(f"   📈 Total: {summary.get('total_vulnerabilities', 0)}")
+            print(f"   🔴 High Risk: {summary.get('high_risk', 0)}")
+            print(f"   🟡 Medium Risk: {summary.get('medium_risk', 0)}")
+            print(f"   🟢 Low Risk: {summary.get('low_risk', 0)}")
+            print(f"   ℹ️  Info: {summary.get('info', 0)}")
 
         # Scanner breakdown
         if 'scanner_results' in scan_data:
-            print(f"\nSCANNER RESULTS:")
+            print(f"\n🔍 SCANNER RESULTS:")
             scanner_results = scan_data['scanner_results']
 
             for scanner_name, scanner_data in scanner_results.items():
+                icon = "🔍" if scanner_name == "basic" else "🌐" if scanner_name == "nmap" else "🔎"
                 if 'error' in scanner_data:
-                    print(f"  {scanner_name.upper()}: ERROR - {scanner_data['error']}")
+                    print(f"   {icon} {scanner_name.upper()}: ❌ ERROR - {scanner_data['error']}")
                 else:
                     vuln_count = len(scanner_data.get('vulnerabilities', []))
-                    print(f"  {scanner_name.upper()}: {vuln_count} vulnerabilities found")
+                    print(f"   {icon} {scanner_name.upper()}: ✅ {vuln_count} findings")
+
+        print("="*80)
 
     def display_detailed_results(self, results: Dict[str, Any]):
         """Display detailed scan results"""
@@ -132,24 +137,24 @@ class AutoSentryClient:
             scan_data = results
 
         if 'scanner_results' not in scan_data:
-            print("\nNo detailed results available.")
+            print("\n❌ No detailed results available.")
             return
 
         scanner_results = scan_data['scanner_results']
 
         for scanner_name, scanner_data in scanner_results.items():
             print(f"\n{'-'*60}")
-            print(f"{scanner_name.upper()} DETAILED RESULTS")
+            print(f"🔍 {scanner_name.upper()} DETAILED RESULTS")
             print(f"{'-'*60}")
 
             if 'error' in scanner_data:
-                print(f"Error: {scanner_data['error']}")
+                print(f"❌ Error: {scanner_data['error']}")
                 continue
 
             vulnerabilities = scanner_data.get('vulnerabilities', [])
 
             if not vulnerabilities:
-                print("No vulnerabilities found.")
+                print("✅ No vulnerabilities found by this scanner.")
                 continue
 
             # Group by risk level
@@ -168,15 +173,20 @@ class AutoSentryClient:
             # Display by risk level
             for risk_level, vulns in risk_groups.items():
                 if vulns:
-                    print(f"\n{risk_level.upper()} RISK ({len(vulns)} findings):")
+                    risk_icon = "🔴" if risk_level == "high" else "🟡" if risk_level == "medium" else "🟢" if risk_level == "low" else "ℹ️"
+                    print(f"\n{risk_icon} {risk_level.upper()} RISK ({len(vulns)} findings):")
 
                     for i, vuln in enumerate(vulns, 1):
-                        print(f"\n  {i}. {vuln.get('name', 'Unknown Vulnerability')}")
-                        print(f"     URL: {vuln.get('url', 'N/A')}")
-                        print(f"     Description: {vuln.get('description', 'N/A')}")
+                        print(f"\n   {i}. {vuln.get('name', 'Unknown Vulnerability')}")
+                        print(f"      🎯 URL: {vuln.get('url', 'N/A')}")
+                        print(f"      📝 Description: {vuln.get('description', 'N/A')}")
+
+                        if vuln.get('evidence'):
+                            evidence = str(vuln.get('evidence'))[:100]
+                            print(f"      🔍 Evidence: {evidence}{'...' if len(str(vuln.get('evidence', ''))) > 100 else ''}")
 
                         if vuln.get('solution'):
-                            print(f"     Solution: {vuln.get('solution')}")
+                            print(f"      💡 Solution: {vuln.get('solution')}")
 
 def main():
     """Main function"""
@@ -218,6 +228,12 @@ def main():
 
     if not args.command:
         parser.print_help()
+        print("\n🛡️  AutoSentry VAPT Tool Client")
+        print("Examples:")
+        print("  python main.py client health")
+        print("  python main.py client status")  
+        print("  python main.py client scan https://example.com --type basic")
+        print("  python main.py client scan https://example.com --type full --detailed")
         sys.exit(1)
 
     # Initialize client
@@ -228,10 +244,10 @@ def main():
         result = client.health_check()
         if result['status'] == 'healthy':
             print("✅ Server is healthy")
-            print(f"Response: {json.dumps(result['response'], indent=2)}")
+            print(f"📊 Response: {json.dumps(result['response'], indent=2)}")
         else:
             print("❌ Server is not healthy")
-            print(f"Error: {result['error']}")
+            print(f"❌ Error: {result['error']}")
             sys.exit(1)
 
     elif args.command == 'status':
@@ -239,11 +255,14 @@ def main():
         if status:
             print("🔍 Scanner Status:")
             print("=" * 30)
-            for scanner, info in status.get('scanners', {}).items():
+            scanners = status.get('scanners', {})
+            for scanner, info in scanners.items():
                 available = info.get('available', False)
                 version = info.get('version', 'Unknown')
                 status_icon = "✅" if available else "❌"
                 print(f"{status_icon} {scanner.upper()}: {version}")
+
+            print(f"\n⏰ Last checked: {status.get('timestamp', 'Unknown')}")
         else:
             print("❌ Failed to get scanner status")
             sys.exit(1)
@@ -259,8 +278,11 @@ def main():
             else:
                 client.display_summary(result)
 
+            print(f"\n💾 Scan saved with ID: {scan_id}")
+            print(f"📄 To view again: python main.py client results {scan_id}")
+
         else:
-            print(f"Scan failed: {result.get('error')}")
+            print(f"❌ Scan failed: {result.get('error')}")
             sys.exit(1)
 
     elif args.command == 'results':
@@ -272,7 +294,7 @@ def main():
             else:
                 client.display_summary(results)
         else:
-            print("Failed to retrieve results")
+            print(f"❌ Failed to retrieve results for scan ID: {args.scan_id}")
             sys.exit(1)
 
 if __name__ == '__main__':
