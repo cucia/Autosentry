@@ -6,25 +6,32 @@ Configuration management for the VAPT scanner
 
 import os
 from typing import Dict, Any
-from dotenv import load_dotenv
+
+# Try to load dotenv, but don't fail if not available
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
 
 class Config:
     """Configuration class for AutoSentry"""
 
     def __init__(self):
         """Initialize configuration from environment variables"""
-        # Try to load .env file
-        env_paths = [
-            'config/.env',
-            '../config/.env',
-            '.env',
-            os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
-        ]
+        # Try to load .env file if dotenv is available
+        if DOTENV_AVAILABLE:
+            env_paths = [
+                'config/.env',
+                '../config/.env',
+                '.env',
+                os.path.join(os.path.dirname(__file__), '..', 'config', '.env')
+            ]
 
-        for env_path in env_paths:
-            if os.path.exists(env_path):
-                load_dotenv(env_path)
-                break
+            for env_path in env_paths:
+                if os.path.exists(env_path):
+                    load_dotenv(env_path)
+                    break
 
         self.load_config()
 
@@ -33,11 +40,11 @@ class Config:
         # Server configuration
         self.HOST = os.getenv('AUTOSENTRY_HOST', '0.0.0.0')
         self.PORT = int(os.getenv('AUTOSENTRY_PORT', '5000'))
-        self.DEBUG = os.getenv('AUTOSENTRY_DEBUG', 'True').lower() == 'true'
+        self.DEBUG = os.getenv('AUTOSENTRY_DEBUG', 'False').lower() == 'true'
 
         # Logging configuration
         self.LOG_LEVEL = os.getenv('AUTOSENTRY_LOG_LEVEL', 'INFO')
-        self.LOG_FILE = os.getenv('AUTOSENTRY_LOG_FILE', 'autosentry.log')
+        self.LOG_FILE = os.getenv('AUTOSENTRY_LOG_FILE', 'logs/autosentry.log')
 
         # Scanner configuration
         self.MAX_SCAN_TIME = int(os.getenv('MAX_SCAN_TIME', '1800'))
@@ -120,7 +127,7 @@ class Config:
         """String representation of configuration"""
         return f"AutoSentry Config (Host: {self.HOST}:{self.PORT}, Debug: {self.DEBUG})"
 
-# Global configuration instance
+# Global configuration instance with error handling
 try:
     config = Config()
 except Exception as e:
@@ -129,7 +136,7 @@ except Exception as e:
     class FallbackConfig:
         HOST = '0.0.0.0'
         PORT = 5000
-        DEBUG = True
+        DEBUG = False
         LOG_LEVEL = 'INFO'
 
     config = FallbackConfig()

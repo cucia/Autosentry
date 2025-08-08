@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-AutoSentry - VAPT Tool (Fixed Version)
+AutoSentry - VAPT Tool
 Main entry point for the application
 
 Usage:
     python main.py server    # Start the server
-    python main.py client    # Run client commands
+    python main.py client    # Run client commands  
     python main.py setup     # Run setup checks
 """
 
@@ -13,47 +13,52 @@ import sys
 import os
 import argparse
 
-# Add project directories to Python path
-project_root = os.path.dirname(os.path.abspath(__file__))
-server_path = os.path.join(project_root, 'server')
-client_path = os.path.join(project_root, 'client')
-
-sys.path.insert(0, project_root)
-sys.path.insert(0, server_path)
-sys.path.insert(0, client_path)
-
 def start_server():
     """Start the AutoSentry server"""
     try:
-        # Change to server directory for proper imports
-        os.chdir(server_path)
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        server_dir = os.path.join(script_dir, 'server')
 
-        from app import app
+        # Add both directories to Python path
+        sys.path.insert(0, script_dir)
+        sys.path.insert(0, server_dir)
+
+        # Import the Flask app
+        from server.app import app
+
+        # Try to load configuration
         try:
-            from config import config
+            from server.config import config
             host = config.HOST
             port = config.PORT
-            debug = config.DEBUG
+            debug = False  # Always False to prevent restart issues
         except:
             # Fallback configuration
             host = os.getenv('AUTOSENTRY_HOST', '0.0.0.0')
             port = int(os.getenv('AUTOSENTRY_PORT', '5000'))
-            debug = os.getenv('AUTOSENTRY_DEBUG', 'True').lower() == 'true'
+            debug = False
 
         print("🛡️  Starting AutoSentry VAPT Tool Server...")
-        print(f"Server URL: http://{host}:{port}")
-        print("Press Ctrl+C to stop")
+        print(f"📍 Server URL: http://{host}:{port}")
+        print("⏹️  Press Ctrl+C to stop")
+        print("")
 
+        # Start server without debug mode to avoid restart issues
         app.run(
             host=host,
             port=port,
-            debug=debug
+            debug=debug,
+            use_reloader=False,  # Disable auto-reloader
+            threaded=True        # Enable threading for better performance
         )
 
     except ImportError as e:
         print(f"❌ Import error: {e}")
-        print("Make sure all dependencies are installed:")
-        print("pip install Flask Flask-CORS requests python-dotenv")
+        print("\n🔧 Troubleshooting:")
+        print("1. Make sure you're in the autosentry_final directory")
+        print("2. Install dependencies: pip install Flask Flask-CORS requests python-dotenv")
+        print("3. Try the backup server: python run_server.py")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Server startup error: {e}")
@@ -62,10 +67,13 @@ def start_server():
 def run_client():
     """Run the client application"""
     try:
-        # Change to client directory
-        os.chdir(client_path)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        client_dir = os.path.join(script_dir, 'client')
 
-        from client import main
+        sys.path.insert(0, script_dir)
+        sys.path.insert(0, client_dir)
+
+        from client.client import main
         main()
 
     except ImportError as e:
@@ -116,16 +124,15 @@ def run_setup():
     import subprocess
 
     tools = [
-        ('nmap', 'Nmap network scanner'),
-        ('nikto', 'Nikto web vulnerability scanner'),
-        ('java', 'Java (for ZAP)')
+        ('nmap', 'Nmap network scanner', ['nmap', '--version']),
+        ('nikto', 'Nikto web vulnerability scanner', ['nikto', '-Version']),
+        ('java', 'Java (for ZAP)', ['java', '-version'])
     ]
 
     print(f"\n🔍 System Tools:")
-    for tool, description in tools:
+    for tool, description, cmd in tools:
         try:
-            result = subprocess.run([tool, '--version'], 
-                                  capture_output=True, text=True, timeout=5)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 print(f"✅ {tool} - Available")
             else:
@@ -134,17 +141,34 @@ def run_setup():
             print(f"❌ {tool} - Not found ({description})")
 
     # Check configuration
-    config_path = os.path.join(project_root, 'config', '.env')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, 'config', '.env')
     if os.path.exists(config_path):
         print(f"✅ Configuration file found: {config_path}")
     else:
         print(f"⚠️  Configuration file not found: {config_path}")
-        print("   You can create one from config/.env.example")
+        print("   Creating default configuration...")
+        try:
+            # Create basic config if missing
+            os.makedirs(os.path.join(script_dir, 'config'), exist_ok=True)
+            with open(config_path, 'w') as f:
+                f.write("""AUTOSENTRY_HOST=0.0.0.0
+AUTOSENTRY_PORT=5000
+AUTOSENTRY_DEBUG=False
+ENABLE_NMAP=True
+ENABLE_NIKTO=True
+RESULTS_DIR=./results
+TEMP_DIR=./temp
+LOGS_DIR=./logs
+""")
+            print(f"✅ Created basic configuration: {config_path}")
+        except Exception as e:
+            print(f"❌ Could not create config: {e}")
 
     # Check directories
     directories = ['results', 'logs', 'temp']
     for directory in directories:
-        dir_path = os.path.join(project_root, directory)
+        dir_path = os.path.join(script_dir, directory)
         if os.path.exists(dir_path):
             print(f"✅ Directory exists: {directory}/")
         else:
@@ -155,8 +179,10 @@ def run_setup():
                 print(f"❌ Cannot create directory {directory}/: {e}")
 
     print("\n🎉 Setup check complete!")
-    print("\nTo start AutoSentry:")
-    print("python main.py server")
+    print("\n🚀 To start AutoSentry:")
+    print("   python main.py server")
+    print("\n🔄 If main.py has issues, use:")
+    print("   python run_server.py")
 
     return True
 
@@ -172,9 +198,9 @@ def main():
         parser.print_help()
         print("\n🛡️  AutoSentry VAPT Tool")
         print("Examples:")
-        print("  python main.py server  # Start web server")
-        print("  python main.py client --help  # Client help")
-        print("  python main.py setup   # Check setup")
+        print("  python main.py server   # Start web server")
+        print("  python main.py client scan https://example.com")
+        print("  python main.py setup    # Check setup")
         sys.exit(1)
 
     args = parser.parse_args()

@@ -17,7 +17,7 @@ def setup_logging(log_level: str = 'INFO') -> logging.Logger:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('autosentry.log', mode='a')
+            logging.FileHandler('logs/autosentry.log', mode='a')
         ]
     )
 
@@ -150,9 +150,6 @@ def load_config_from_env() -> Dict[str, Any]:
         'PORT': int(os.getenv('AUTOSENTRY_PORT', '5000')),
         'DEBUG': os.getenv('AUTOSENTRY_DEBUG', 'False').lower() == 'true',
         'LOG_LEVEL': os.getenv('AUTOSENTRY_LOG_LEVEL', 'INFO'),
-        'ZAP_API_KEY': os.getenv('ZAP_API_KEY', 'autosentry-api-key'),
-        'ZAP_HOST': os.getenv('ZAP_HOST', '127.0.0.1'),
-        'ZAP_PORT': int(os.getenv('ZAP_PORT', '8080')),
         'MAX_SCAN_TIME': int(os.getenv('MAX_SCAN_TIME', '1800')),
         'RESULTS_DIR': os.getenv('RESULTS_DIR', './results'),
         'TEMP_DIR': os.getenv('TEMP_DIR', './temp')
